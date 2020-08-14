@@ -5,6 +5,11 @@ import { AuthState, onAuthUIStateChange } from "@aws-amplify/ui-components";
 
 import { createNote, deleteNote, updateNote } from "./graphql/mutations";
 import { listNotes } from "./graphql/queries";
+import {
+  onCreateNote,
+  onDeleteNote,
+  onUpdateNote,
+} from "./graphql/subscriptions";
 
 const App = () => {
   const [auth, setAuth] = useState(null);
@@ -20,15 +25,48 @@ const App = () => {
     });
   }, []);
 
+  const fetchAllNotes = async () => {
+    try {
+      const res = await API.graphql(graphqlOperation(listNotes));
+      setNotes(res.data.listNotes.items);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await API.graphql(graphqlOperation(listNotes));
-        setNotes(res.data.listNotes.items);
-      } catch (error) {
-        console.error(error);
-      }
-    })();
+    fetchAllNotes();
+    const createNoteListener = API.graphql(
+      graphqlOperation(onCreateNote)
+    ).subscribe({
+      next: (noteData) => {
+        const newNote = noteData.value.data.onCreateNote;
+        setNotes((prev) => [newNote, ...prev]);
+      },
+    });
+    const deleteNoteListener = API.graphql(
+      graphqlOperation(onDeleteNote)
+    ).subscribe({
+      next: (noteData) => {
+        const deletedNote = noteData.value.data.onDeleteNote;
+        setNotes((prev) => prev.filter((note) => note.id !== deletedNote.id));
+      },
+    });
+    const updateNoteListener = API.graphql(
+      graphqlOperation(onUpdateNote)
+    ).subscribe({
+      next: (noteData) => {
+        const updatedNote = noteData.value.data.onUpdateNote;
+        setNotes((prev) =>
+          prev.map((note) => (note.id === updatedNote.id ? updatedNote : note))
+        );
+      },
+    });
+    return () => {
+      createNoteListener.unsubscribe();
+      deleteNoteListener.unsubscribe();
+      updateNoteListener.unsubscribe();
+    };
   }, []);
 
   const handleChange = (evt) => {
@@ -46,19 +84,18 @@ const App = () => {
     evt.preventDefault();
     try {
       let input;
-
       let res;
       if (isEditing()) {
         input = { id: editId, note };
         res = await API.graphql(graphqlOperation(updateNote, { input }));
-        setNotes((prev) =>
-          prev.map((note) => (note.id === editId ? res.data.updateNote : note))
-        );
+        // setNotes((prev) =>
+        //   prev.map((note) => (note.id === editId ? res.data.updateNote : note))
+        // );
         setEditId(null);
       } else {
         input = { note };
         res = await API.graphql(graphqlOperation(createNote, { input }));
-        setNotes((prev) => [res.data.createNote, ...prev]);
+        // setNotes((prev) => [res.data.createNote, ...prev]);
       }
       setNote("");
     } catch (error) {
@@ -70,14 +107,10 @@ const App = () => {
     try {
       const input = { id };
       await API.graphql(graphqlOperation(deleteNote, { input }));
-      setNotes((prev) => prev.filter((note) => note.id !== id));
+      // setNotes((prev) => prev.filter((note) => note.id !== id));
     } catch (error) {
       console.error(error);
     }
-  };
-
-  const handleSetNote = ({ note, id }) => {
-    setEditId(id);
   };
 
   return auth === AuthState.SignedIn && user ? (
@@ -108,7 +141,7 @@ const App = () => {
             <li
               className="list pa1 f3"
               style={{ cursor: "pointer" }}
-              onClick={() => handleSetNote(note)}
+              onClick={() => setEditId(note.id)}
             >
               {note.note}
             </li>
