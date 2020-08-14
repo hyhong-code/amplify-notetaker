@@ -1,5 +1,5 @@
 import React, { Fragment, useEffect, useState } from "react";
-import { API, graphqlOperation } from "aws-amplify";
+import { Auth, API, graphqlOperation } from "aws-amplify";
 import { AmplifyAuthenticator, AmplifyGreetings } from "@aws-amplify/ui-react";
 import { AuthState, onAuthUIStateChange } from "@aws-amplify/ui-components";
 
@@ -34,44 +34,57 @@ const App = () => {
     }
   };
 
+  // Change notes list when switching user
   useEffect(() => {
     fetchAllNotes();
-    const createNoteListener = API.graphql(
-      graphqlOperation(onCreateNote)
-    ).subscribe({
-      next: (noteData) => {
-        const newNote = noteData.value.data.onCreateNote;
-        setNotes((prev) => [newNote, ...prev]);
-      },
-    });
-    const deleteNoteListener = API.graphql(
-      graphqlOperation(onDeleteNote)
-    ).subscribe({
-      next: (noteData) => {
-        const deletedNote = noteData.value.data.onDeleteNote;
-        setNotes((prev) => prev.filter((note) => note.id !== deletedNote.id));
-      },
-    });
-    const updateNoteListener = API.graphql(
-      graphqlOperation(onUpdateNote)
-    ).subscribe({
-      next: (noteData) => {
-        const updatedNote = noteData.value.data.onUpdateNote;
-        setNotes((prev) =>
-          prev.map((note) => (note.id === updatedNote.id ? updatedNote : note))
-        );
-      },
-    });
+  }, [user]);
+
+  useEffect(() => {
+    let createNoteListener;
+    let deleteNoteListener;
+    let updateNoteListener;
+    (async () => {
+      createNoteListener = API.graphql(
+        graphqlOperation(onCreateNote, {
+          owner: (await Auth.currentAuthenticatedUser()).username,
+        })
+      ).subscribe({
+        next: (noteData) => {
+          const newNote = noteData.value.data.onCreateNote;
+          setNotes((prev) => [newNote, ...prev]);
+        },
+      });
+      deleteNoteListener = API.graphql(
+        graphqlOperation(onDeleteNote, {
+          owner: (await Auth.currentAuthenticatedUser()).username,
+        })
+      ).subscribe({
+        next: (noteData) => {
+          const deletedNote = noteData.value.data.onDeleteNote;
+          setNotes((prev) => prev.filter((note) => note.id !== deletedNote.id));
+        },
+      });
+      updateNoteListener = API.graphql(
+        graphqlOperation(onUpdateNote, {
+          owner: (await Auth.currentAuthenticatedUser()).username,
+        })
+      ).subscribe({
+        next: (noteData) => {
+          const updatedNote = noteData.value.data.onUpdateNote;
+          setNotes((prev) =>
+            prev.map((note) =>
+              note.id === updatedNote.id ? updatedNote : note
+            )
+          );
+        },
+      });
+    })();
     return () => {
       createNoteListener.unsubscribe();
       deleteNoteListener.unsubscribe();
       updateNoteListener.unsubscribe();
     };
   }, []);
-
-  const handleChange = (evt) => {
-    setNote(evt.target.value);
-  };
 
   const isEditing = () => {
     if (editId && !!notes.find((note) => note.id === editId)) {
@@ -84,18 +97,13 @@ const App = () => {
     evt.preventDefault();
     try {
       let input;
-      let res;
       if (isEditing()) {
         input = { id: editId, note };
-        res = await API.graphql(graphqlOperation(updateNote, { input }));
-        // setNotes((prev) =>
-        //   prev.map((note) => (note.id === editId ? res.data.updateNote : note))
-        // );
+        await API.graphql(graphqlOperation(updateNote, { input }));
         setEditId(null);
       } else {
         input = { note };
-        res = await API.graphql(graphqlOperation(createNote, { input }));
-        // setNotes((prev) => [res.data.createNote, ...prev]);
+        await API.graphql(graphqlOperation(createNote, { input }));
       }
       setNote("");
     } catch (error) {
@@ -107,7 +115,6 @@ const App = () => {
     try {
       const input = { id };
       await API.graphql(graphqlOperation(deleteNote, { input }));
-      // setNotes((prev) => prev.filter((note) => note.id !== id));
     } catch (error) {
       console.error(error);
     }
@@ -124,7 +131,7 @@ const App = () => {
             type="text"
             className="pa2 f4"
             placeholder={isEditing() ? "Update your note" : "Write your note"}
-            onChange={handleChange}
+            onChange={(evt) => setNote(evt.target.value)}
             value={note}
           />
           <button
