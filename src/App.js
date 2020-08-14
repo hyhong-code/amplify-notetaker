@@ -1,4 +1,4 @@
-import React, { Fragment, useEffect, useState } from "react";
+import React, { Fragment, useEffect, useState, useRef } from "react";
 import { Auth, API, graphqlOperation } from "aws-amplify";
 import { AmplifyAuthenticator, AmplifyGreetings } from "@aws-amplify/ui-react";
 import { AuthState, onAuthUIStateChange } from "@aws-amplify/ui-components";
@@ -17,6 +17,7 @@ const App = () => {
   const [note, setNote] = useState("");
   const [notes, setNotes] = useState([]);
   const [editId, setEditId] = useState(null);
+  const inputRef = useRef();
 
   useEffect(() => {
     return onAuthUIStateChange((nextAuthState, authData) => {
@@ -39,6 +40,12 @@ const App = () => {
     fetchAllNotes();
   }, [user]);
 
+  // Focus input on load
+  useEffect(() => {
+    if (inputRef.current) inputRef.current.focus();
+  }, [inputRef.current]);
+
+  // Subscriptions
   useEffect(() => {
     let createNoteListener;
     let deleteNoteListener;
@@ -128,6 +135,7 @@ const App = () => {
         {/* Note Form */}
         <form className="mb3" onSubmit={handleSubmit}>
           <input
+            ref={inputRef}
             type="text"
             className="pa2 f4"
             placeholder={isEditing() ? "Update your note" : "Write your note"}
@@ -148,7 +156,10 @@ const App = () => {
             <li
               className="list pa1 f3"
               style={{ cursor: "pointer" }}
-              onClick={() => setEditId(note.id)}
+              onClick={() => {
+                setEditId(note.id);
+                inputRef.current.focus();
+              }}
             >
               {note.note}
             </li>
